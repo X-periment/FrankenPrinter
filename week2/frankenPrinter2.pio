@@ -1,0 +1,104 @@
+// By Xperiment  November 2022, video available at: https://youtu.be/tLPAEYJCyFs
+
+//THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+
+
+.program frankenPrinter2_io
+    mov OSR, null
+    out pindirs, 8
+
+start:
+ 
+
+    
+    in NULL, 32
+    in pins, 13
+    mov Y, ISR
+    mov OSR, Y   ; check that mov doesn't clear source! 
+    
+    set X, 24 ;  b11000   for MW A4 RI  43210
+    in NULL, 32
+    in X, 5
+    in Y, 8   ; grab just the data pins
+    
+    mov Y, ISR
+    mov X, OSR
+    jmp X!=Y, start
+    
+    pull noblock
+
+    
+    mov ISR, OSR
+    ; give it some data 
+
+    out pins, 8
+    ; now set the data pins to output!
+    mov osr, !null  ; because otherwise pin direction will fluctuate!!
+    out pindirs, 8
+
+    
+    push 
+    irq 0
+    
+    wait 1 pin 8  ; wait for iorq to go high again
+    
+    
+    
+    mov OSR, null
+    out pins, 8  [2]
+
+    mov OSR, null
+    out pindirs, 8
+    jmp start
+    
+
+
+    
+    
+ 
+
+% c-sdk {
+static inline void frankenPrinter2_io_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    // Connect these GPIOs to this PIO block
+    for (int i =0; i<31; i++) {
+       pio_gpio_init(pio, i); 
+    }
+    pio_sm_config c = frankenPrinter2_io_program_get_default_config(offset);
+
+
+    sm_config_set_in_pins(&c, pin);  //set base pin
+    sm_config_set_jmp_pin(&c, 8);  // ignores base pin?! datasheet calls it the "raw" pin number
+    
+    pio_sm_set_consecutive_pindirs(pio, sm, 1, 31, false);  // all pins input
+    pio_sm_set_consecutive_pindirs(pio, sm, 0,1, true);  // pin 0 to output
+    //pio_sm_set_pins(pio,sm,1);
+    sm_config_set_set_pins(&c,0,2);  //This was a surprise! is this also needed for setting pindirs?
+    sm_config_set_out_pins(&c, 0, 8); // and so was this, but shouldn't have been given the above!
+
+
+    // Shifting to left matches the customary MSB-first ordering of SPI.
+    sm_config_set_in_shift(
+        &c,
+        false, // Shift-to-right = false (i.e. shift to left)
+        false,  // Autopush enabled
+        32     // Autopush threshold = 32
+    );
+    // all the below are the default so don;t really need, shift right and auto off
+    sm_config_set_out_shift(
+        &c,
+        true, // Shift-to-right = true (i.e. shift to right)   // with shift to the right, the least sig bits get shifted out.  
+       false,  // Autopull?? enabled
+        32     // Autopull? threshold = 32
+    );
+
+
+
+    // Load our configuration, and start the program from the beginning
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
+
+
